@@ -86,6 +86,7 @@ defmodule SloPitchWeb do
       import Phoenix.HTML
       # Core UI components
       import SloPitchWeb.CoreComponents
+      import SloPitchWeb.AppNavComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
