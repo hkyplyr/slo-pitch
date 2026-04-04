@@ -6,7 +6,11 @@ import Config
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
 config :slo_pitch, SloPitch.Repo,
-  database: Path.expand("../slo_pitch_test.db", __DIR__),
+  username: System.get_env("DB_USERNAME") || "postgres",
+  password: System.get_env("DB_PASSWORD") || "postgres",
+  hostname: System.get_env("DB_HOSTNAME") || "localhost",
+  port: String.to_integer(System.get_env("DB_PORT") || "5432"),
+  database: "slo_pitch_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool_size: 5,
   pool: Ecto.Adapters.SQL.Sandbox
 

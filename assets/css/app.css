@@ -103,3 +103,67 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+.score-shell {
+  --score-ink: #0f172a;
+}
+
+.score-card {
+  background:
+    radial-gradient(circle at 20% 10%, rgb(125 211 252 / 0.35), transparent 28%),
+    radial-gradient(circle at 85% 90%, rgb(34 211 238 / 0.2), transparent 28%),
+    linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 45%, #0f172a 100%);
+}
+
+.soft-pill {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgb(226 232 240 / 0.3);
+  background-color: rgb(255 255 255 / 0.12);
+  padding-inline: 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background-color 180ms ease, transform 140ms ease;
+}
+
+.soft-pill:hover {
+  background-color: rgb(255 255 255 / 0.2);
+}
+
+.soft-pill:active {
+  transform: scale(0.98);
+}
+
+.result-pill:hover {
+  transform: translateY(-1px);
+}
+
+.result-pill:active {
+  transform: translateY(0);
+}
+
+.stepper {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background-color: white;
+  color: var(--score-ink);
+  font-size: 1.1rem;
+  font-weight: 700;
+  border: 1px solid rgb(203 213 225);
+  transition: border-color 140ms ease, transform 120ms ease;
+}
+
+.stepper:hover {
+  border-color: rgb(59 130 246);
+}
+
+.stepper:active {
+  transform: scale(0.96);
+}

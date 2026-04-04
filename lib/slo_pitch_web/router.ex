@@ -17,7 +17,13 @@ defmodule SloPitchWeb.Router do
   scope "/", SloPitchWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", GamesLive.Index
+    live "/games", GamesLive.Index
+    live "/games/:id/setup", GamesLive.Setup
+    live "/games/:id/scoring", ScoringLive
+    live "/games/:id", GamesLive.Show
+    live "/roster", RosterLive.Index
+    live "/stats", StatsLive.Index
   end
 
   # Other scopes may use custom stacks.
