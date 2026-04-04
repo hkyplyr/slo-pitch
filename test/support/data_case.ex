@@ -26,6 +26,7 @@ defmodule SloPitch.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import SloPitch.DataCase
+      import SloPitch.TrackingFixtures
     end
   end
 

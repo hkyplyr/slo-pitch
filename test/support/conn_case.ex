@@ -27,7 +27,9 @@ defmodule SloPitchWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import Phoenix.LiveViewTest
       import SloPitchWeb.ConnCase
+      import SloPitch.TrackingFixtures
     end
   end
 
