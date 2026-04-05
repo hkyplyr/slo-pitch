@@ -2,6 +2,8 @@ defmodule SloPitchWeb.ScoringLive do
   use SloPitchWeb, :live_view
 
   alias SloPitch.Tracking
+  alias SloPitch.GameEngine.Bases
+  alias SloPitch.GameEngine.Phase
 
   @results [
     %{value: "single", label: "1B", color: "bg-emerald-500 hover:bg-emerald-600"},
@@ -10,7 +12,6 @@ defmodule SloPitchWeb.ScoringLive do
     %{value: "home_run", label: "HR", color: "bg-amber-500 hover:bg-amber-600"},
     %{value: "out", label: "OUT", color: "bg-zinc-600 hover:bg-zinc-700"}
   ]
-  @max_innings 7
 
   @impl true
   def mount(params, _session, socket) do
@@ -18,7 +19,7 @@ defmodule SloPitchWeb.ScoringLive do
     game = Tracking.get_game!(game_id)
     lineup = Tracking.list_lineup_players(game.id)
     innings = Tracking.ensure_innings(game.id)
-    phase = derive_phase(game, innings, Tracking.list_plate_appearances(game.id))
+    phase = Phase.derive_phase(game, innings, Tracking.list_plate_appearances(game.id))
 
     {:ok,
      socket
@@ -369,105 +370,6 @@ defmodule SloPitchWeb.ScoringLive do
   defp empty_bases, do: %{first: nil, second: nil, third: nil}
   defp default_runner_plan, do: %{first: :auto, second: :auto, third: :auto, batter: :auto}
 
-  defp derive_phase(game, innings, appearances) do
-    inning_runs =
-      appearances
-      |> Enum.group_by(& &1.inning)
-      |> Map.new(fn {inning, inning_appearances} ->
-        outs =
-          Enum.count(inning_appearances, fn pa ->
-            pa.skip or pa.result in ["out", "strikeout"]
-          end)
-
-        runs = Enum.reduce(inning_appearances, 0, &(&1.runs_scored + &2))
-        {inning, %{outs: outs, runs: runs}}
-      end)
-
-    inning_by_number = Map.new(innings, fn inning -> {inning.inning_number, inning} end)
-
-    find_phase(game, inning_by_number, inning_runs, 1)
-  end
-
-  defp find_phase(game, inning_by_number, inning_runs, inning) when inning > @max_innings do
-    side = game.home_or_away || "away"
-    game_over_phase(side, inning_by_number, inning_runs)
-  end
-
-  defp find_phase(game, inning_by_number, inning_runs, inning) do
-    side = game.home_or_away || "away"
-    our = Map.get(inning_runs, inning, %{outs: 0, runs: 0})
-    opp = Map.get(inning_by_number, inning, %{opp_runs: 0, opp_outs: 0})
-
-    our_complete? = our.outs >= 3 or our.runs >= 5
-    opp_complete? = opp.opp_outs >= 3 or opp.opp_runs >= 5
-
-    case phase_decision(side, inning, our_complete?, opp_complete?, home_team_ahead?(game)) do
-      {:phase, half, mode} ->
-        phase_data(side, inning_by_number, inning_runs, inning, half, mode)
-
-      :game_over ->
-        game_over_phase(side, inning_by_number, inning_runs)
-
-      :next_inning ->
-        find_phase(game, inning_by_number, inning_runs, inning + 1)
-    end
-  end
-
-  defp phase_decision("away", _inning, false, _opp_complete?, _home_ahead?),
-    do: {:phase, :top, :offense}
-
-  defp phase_decision("away", inning, true, _opp_complete?, true) when inning == @max_innings,
-    do: :game_over
-
-  defp phase_decision("away", _inning, true, false, _home_ahead?),
-    do: {:phase, :bottom, :defense}
-
-  defp phase_decision("away", _inning, true, true, _home_ahead?),
-    do: :next_inning
-
-  defp phase_decision("home", _inning, _our_complete?, false, _home_ahead?),
-    do: {:phase, :top, :defense}
-
-  defp phase_decision("home", inning, _our_complete?, true, true) when inning == @max_innings,
-    do: :game_over
-
-  defp phase_decision("home", _inning, false, true, _home_ahead?),
-    do: {:phase, :bottom, :offense}
-
-  defp phase_decision("home", _inning, true, true, _home_ahead?),
-    do: :next_inning
-
-  defp phase_data(side, inning_by_number, inning_runs, inning, half, mode) do
-    our = Map.get(inning_runs, inning, %{outs: 0, runs: 0})
-    opp = Map.get(inning_by_number, inning, %{opp_runs: 0, opp_outs: 0})
-
-    %{
-      inning: inning,
-      half: half,
-      mode: mode,
-      side: side,
-      our_outs: min(our.outs, 3),
-      our_runs: our.runs,
-      opp_outs: min(opp.opp_outs || 0, 3),
-      opp_runs: opp.opp_runs || 0
-    }
-  end
-
-  defp game_over_phase(side, inning_by_number, inning_runs) do
-    phase_data(side, inning_by_number, inning_runs, @max_innings, :final, :game_over)
-  end
-
-  defp home_team_ahead?(game) do
-    {home_score, away_score} =
-      if game.home_or_away == "home" do
-        {game.our_score, game.opp_score}
-      else
-        {game.opp_score, game.our_score}
-      end
-
-    home_score > away_score
-  end
-
   defp home_run_counts(game),
     do: %{home: game.home_home_runs || 0, away: game.away_home_runs || 0}
 
@@ -532,10 +434,10 @@ defmodule SloPitchWeb.ScoringLive do
 
   defp default_runner_plan_for_result(result) do
     %{
-      first: auto_destination(:first, result),
-      second: auto_destination(:second, result),
-      third: auto_destination(:third, result),
-      batter: auto_destination(:batter, result)
+      first: Bases.auto_destination(:first, result),
+      second: Bases.auto_destination(:second, result),
+      third: Bases.auto_destination(:third, result),
+      batter: Bases.auto_destination(:batter, result)
     }
   end
 
@@ -546,93 +448,6 @@ defmodule SloPitchWeb.ScoringLive do
       next_bases_for_appearance(appearance, bases)
     end)
   end
-
-  defp apply_result_to_bases(bases, result, batter_id) do
-    apply_result_to_bases(bases, result, batter_id, default_runner_plan())
-  end
-
-  defp apply_result_to_bases(bases, result, batter_id, runner_plan) do
-    actors = [
-      {:first, bases.first},
-      {:second, bases.second},
-      {:third, bases.third},
-      {:batter, batter_id}
-    ]
-
-    case Enum.reduce_while(actors, {empty_bases(), 0}, fn actor_and_player, acc ->
-           reduce_runner(actor_and_player, acc, result, runner_plan)
-         end) do
-      {:error, :base_conflict} ->
-        {:error, :base_conflict}
-
-      {next_bases, runs} ->
-        rbis = if result == "strikeout", do: 0, else: runs
-        {:ok, next_bases, runs, rbis}
-    end
-  end
-
-  defp reduce_runner({_actor, nil}, {next_bases, runs}, _result, _runner_plan),
-    do: {:cont, {next_bases, runs}}
-
-  defp reduce_runner({actor, player_id}, {next_bases, runs}, result, runner_plan) do
-    destination = planned_destination(actor, result, runner_plan)
-    apply_runner_destination(next_bases, runs, player_id, destination)
-  end
-
-  defp apply_runner_destination(next_bases, runs, _player_id, :out),
-    do: {:cont, {next_bases, runs}}
-
-  defp apply_runner_destination(next_bases, runs, _player_id, :home),
-    do: {:cont, {next_bases, runs + 1}}
-
-  defp apply_runner_destination(next_bases, runs, player_id, destination)
-       when destination in [:first, :second, :third] do
-    if Map.get(next_bases, destination) do
-      {:halt, {:error, :base_conflict}}
-    else
-      {:cont, {Map.put(next_bases, destination, player_id), runs}}
-    end
-  end
-
-  defp planned_destination(actor, result, runner_plan) do
-    case Map.get(runner_plan, actor, :auto) do
-      :auto -> auto_destination(actor, result)
-      destination -> destination
-    end
-  end
-
-  defp auto_destination(:batter, "single"), do: :first
-  defp auto_destination(:batter, "double"), do: :second
-  defp auto_destination(:batter, "triple"), do: :third
-  defp auto_destination(:batter, "home_run"), do: :home
-  defp auto_destination(:batter, "walk"), do: :first
-  defp auto_destination(:batter, "strikeout"), do: :out
-  defp auto_destination(:batter, "out"), do: :out
-
-  defp auto_destination(:first, "single"), do: :second
-  defp auto_destination(:first, "double"), do: :third
-  defp auto_destination(:first, "triple"), do: :home
-  defp auto_destination(:first, "home_run"), do: :home
-  defp auto_destination(:first, "walk"), do: :second
-  defp auto_destination(:first, "strikeout"), do: :first
-  defp auto_destination(:first, "out"), do: :first
-
-  defp auto_destination(:second, "single"), do: :third
-  defp auto_destination(:second, "double"), do: :home
-  defp auto_destination(:second, "triple"), do: :home
-  defp auto_destination(:second, "home_run"), do: :home
-  defp auto_destination(:second, "walk"), do: :second
-  defp auto_destination(:second, "strikeout"), do: :second
-  defp auto_destination(:second, "out"), do: :second
-
-  defp auto_destination(:third, "single"), do: :home
-  defp auto_destination(:third, "double"), do: :home
-  defp auto_destination(:third, "triple"), do: :home
-  defp auto_destination(:third, "home_run"), do: :home
-  defp auto_destination(:third, "walk"), do: :home
-  defp auto_destination(:third, "strikeout"), do: :third
-  defp auto_destination(:third, "out"), do: :third
-  defp auto_destination(_actor, _result), do: :out
 
   defp end_bases_from_record(nil), do: nil
 
@@ -695,7 +510,7 @@ defmodule SloPitchWeb.ScoringLive do
   defp next_bases_for_appearance(appearance, bases) do
     case end_bases_from_record(appearance.end_bases) do
       nil ->
-        case apply_result_to_bases(bases, appearance.result, appearance.player_id) do
+        case Bases.apply_result_to_bases(bases, appearance.result, appearance.player_id) do
           {:ok, next_bases, _runs, _rbis} -> next_bases
           {:error, :base_conflict} -> bases
         end
@@ -754,7 +569,7 @@ defmodule SloPitchWeb.ScoringLive do
   defp reload_game_state(socket) do
     game = Tracking.get_game!(socket.assigns.game.id)
     innings = Tracking.ensure_innings(game.id)
-    phase = derive_phase(game, innings, Tracking.list_plate_appearances(game.id))
+    phase = Phase.derive_phase(game, innings, Tracking.list_plate_appearances(game.id))
 
     game =
       if phase.mode == :game_over and game.status != "final" do
@@ -793,7 +608,7 @@ defmodule SloPitchWeb.ScoringLive do
 
     with :ok <- validate_home_run_limit(socket.assigns.game, result),
          {:ok, new_bases, auto_runs, auto_rbis} <-
-           apply_result_to_bases(socket.assigns.bases, result, batter.id, runner_plan),
+           Bases.apply_result_to_bases(socket.assigns.bases, result, batter.id, runner_plan),
          {:ok, plate_appearance} <-
            record_plate_appearance_for_result(
              socket,
@@ -893,7 +708,7 @@ defmodule SloPitchWeb.ScoringLive do
       |> assign(:effective_batter, inserted_or_current_batter(assigns))
 
     {_preview_bases, preview_runs, preview_rbis} =
-      case apply_result_to_bases(
+      case Bases.apply_result_to_bases(
              assigns.bases,
              assigns.selected_result,
              assigns.effective_batter.id
@@ -904,7 +719,7 @@ defmodule SloPitchWeb.ScoringLive do
 
     {modal_preview_bases, modal_preview_runs, modal_preview_rbis, modal_preview_conflict?} =
       if assigns.result_modal_open && not is_nil(assigns.pending_result) do
-        case apply_result_to_bases(
+        case Bases.apply_result_to_bases(
                assigns.bases,
                assigns.pending_result,
                assigns.effective_batter.id,
