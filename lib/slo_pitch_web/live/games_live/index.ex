@@ -19,7 +19,7 @@ defmodule SloPitchWeb.GamesLive.Index do
       opponent_name: String.trim(Map.get(params, "opponent_name", "")),
       played_on: Map.get(params, "played_on", ""),
       location: blank_to_nil(Map.get(params, "location", "")),
-      home_or_away: Map.get(params, "home_or_away", "away"),
+      alignment: Map.get(params, "alignment", :away),
       status: "scheduled"
     }
 
@@ -71,7 +71,7 @@ defmodule SloPitchWeb.GamesLive.Index do
               placeholder="Rotary Park"
             />
             <.input
-              field={@game_form[:home_or_away]}
+              field={@game_form[:alignment]}
               type="select"
               label="Our Team"
               options={[{"Away (bat first)", "away"}, {"Home (bat second)", "home"}]}
@@ -98,12 +98,13 @@ defmodule SloPitchWeb.GamesLive.Index do
               >
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <p class="text-sm font-semibold text-slate-900">vs {game.opponent_name}</p>
+                    <p class="text-sm font-semibold text-slate-900">
+                      {if game.alignment == :away, do: "@", else: "vs."} {game.opponent_name}
+                    </p>
                     <p class="text-xs text-slate-600">
                       {game.location || "TBD"} • {Calendar.strftime(game.played_on, "%b %d")}
                     </p>
                   </div>
-                  <p class="text-lg font-bold text-blue-900">{game.our_score}-{game.opp_score}</p>
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
                   <.link navigate={~p"/games/#{game.id}/scoring"} class="btn btn-sm btn-primary">
@@ -133,7 +134,9 @@ defmodule SloPitchWeb.GamesLive.Index do
                 id={"scheduled-game-#{game.id}"}
                 class="rounded-2xl border border-slate-200 bg-slate-50 p-3"
               >
-                <p class="text-sm font-semibold text-slate-900">vs {game.opponent_name}</p>
+                <p class="text-sm font-semibold text-slate-900">
+                  {if game.alignment == :away, do: "@", else: "vs."} {game.opponent_name}
+                </p>
                 <p class="text-xs text-slate-600">
                   {game.location || "TBD"} • {Calendar.strftime(game.played_on, "%A, %b %d")}
                 </p>
@@ -185,17 +188,9 @@ defmodule SloPitchWeb.GamesLive.Index do
                     {Calendar.strftime(game.played_on, "%b %d")}
                   </td>
                   <td class="px-3 py-2 font-medium text-slate-900">{game.opponent_name}</td>
-                  <td class="px-3 py-2 font-semibold text-slate-900">
-                    {game.our_score}-{game.opp_score}
-                  </td>
+                  <td class="px-3 py-2 font-semibold text-slate-900">Score</td>
                   <td class="px-3 py-2">
-                    <span class={[
-                      "rounded-full px-2 py-1 text-xs font-semibold",
-                      game.our_score > game.opp_score && "bg-emerald-100 text-emerald-900",
-                      game.our_score <= game.opp_score && "bg-rose-100 text-rose-900"
-                    ]}>
-                      {if(game.our_score > game.opp_score, do: "W", else: "L")}
-                    </span>
+                    <span class="rounded-full px-2 py-1 text-xs font-semibold">Result</span>
                   </td>
                   <td class="px-3 py-2 text-right">
                     <.link
@@ -243,7 +238,7 @@ defmodule SloPitchWeb.GamesLive.Index do
         "opponent_name" => "",
         "played_on" => Date.to_iso8601(Date.utc_today()),
         "location" => "",
-        "home_or_away" => "away"
+        "alignment" => :away
       },
       as: :game
     )

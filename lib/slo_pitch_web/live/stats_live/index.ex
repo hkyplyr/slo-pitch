@@ -5,7 +5,6 @@ defmodule SloPitchWeb.StatsLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    stats = Tracking.player_stats(:season)
     score_path = score_path()
 
     {:ok,
@@ -15,19 +14,17 @@ defmodule SloPitchWeb.StatsLive.Index do
      |> assign(:score_path, score_path)
      |> assign(:window, :season)
      |> assign(:sort_by, :avg)
-     |> assign(:stats, sort_stats(stats, :avg))}
+     |> assign(:stats, [])}
   end
 
   @impl true
   def handle_event("set_window", %{"value" => value}, socket) do
     window = if value == "last5", do: :last5, else: :season
 
-    stats = Tracking.player_stats(window)
-
     {:noreply,
      socket
      |> assign(:window, window)
-     |> assign(:stats, sort_stats(stats, socket.assigns.sort_by))}
+     |> assign(:stats, [])}
   end
 
   def handle_event("sort", %{"field" => field}, socket) do

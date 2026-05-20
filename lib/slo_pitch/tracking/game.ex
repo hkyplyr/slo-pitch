@@ -3,22 +3,19 @@ defmodule SloPitch.Tracking.Game do
   import Ecto.Changeset
 
   @statuses ~w(scheduled in_progress final)
-  @home_sides ~w(home away)
+  @home_sides ~w(home away)a
+
+  @type t :: %__MODULE__{}
 
   schema "games" do
     field :opponent_name, :string
     field :played_on, :date
     field :location, :string
     field :status, :string, default: "scheduled"
-    field :home_or_away, :string, default: "away"
-    field :our_score, :integer, default: 0
-    field :opp_score, :integer, default: 0
-    field :home_home_runs, :integer, default: 0
-    field :away_home_runs, :integer, default: 0
+    field :alignment, Ecto.Enum, values: @home_sides
 
-    has_many :lineup_slots, SloPitch.Tracking.GameLineupSlot
-    has_many :innings, SloPitch.Tracking.GameInning
-    has_many :plate_appearances, SloPitch.Tracking.PlateAppearance
+    has_many :lineup_slots, SloPitch.Tracking.GameLineupSlot, preload_order: [asc: :batting_order]
+    has_many :players, through: [:lineup_slots, :player]
 
     timestamps(type: :utc_datetime)
   end
@@ -30,18 +27,10 @@ defmodule SloPitch.Tracking.Game do
       :played_on,
       :location,
       :status,
-      :home_or_away,
-      :our_score,
-      :opp_score,
-      :home_home_runs,
-      :away_home_runs
+      :alignment
     ])
-    |> validate_required([:opponent_name, :played_on, :status, :home_or_away])
+    |> validate_required([:opponent_name, :played_on, :status, :alignment])
     |> validate_inclusion(:status, @statuses)
-    |> validate_inclusion(:home_or_away, @home_sides)
-    |> validate_number(:our_score, greater_than_or_equal_to: 0)
-    |> validate_number(:opp_score, greater_than_or_equal_to: 0)
-    |> validate_number(:home_home_runs, greater_than_or_equal_to: 0)
-    |> validate_number(:away_home_runs, greater_than_or_equal_to: 0)
+    |> validate_inclusion(:alignment, @home_sides)
   end
 end

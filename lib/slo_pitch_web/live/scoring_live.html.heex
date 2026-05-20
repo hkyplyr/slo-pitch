@@ -3,139 +3,190 @@
     <.app_tabs current={:scoring} score_path={~p"/games/#{@game.id}/scoring"} />
 
     <section class="score-card sticky top-3 z-20 space-y-3 rounded-3xl px-4 py-4 text-white shadow-xl shadow-blue-950/20 sm:px-6">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-xs uppercase tracking-[0.18em] text-cyan-100">Slo-Pitch Live</p>
-          <h1 class="text-xl font-semibold sm:text-2xl">vs {@game.opponent_name}</h1>
-          <p class="text-xs text-blue-100 sm:text-sm">
-            {Calendar.strftime(@game.played_on, "%b %d, %Y")} • {@game.location}
-          </p>
+      <div class="space-y-2.5">
+        <div class="grid grid-cols-2 items-start gap-3">
+          <h1 class="text-3xl font-semibold sm:text-3xl">
+            {if @game.alignment == :away, do: "@", else: "vs."} {@game.opponent_name}
+          </h1>
+          <div class="space-y-0.5 text-right">
+            <p class="text-xs text-blue-100 sm:text-sm">
+              {Calendar.strftime(@game.played_on, "%b %d, %Y")}
+            </p>
+            <p class="text-xs text-blue-100 sm:text-sm">{@game.location}</p>
+          </div>
         </div>
-        <div class="rounded-2xl bg-white/15 px-4 py-3 text-right backdrop-blur">
-          <p class="text-xs uppercase tracking-[0.2em] text-cyan-100">Score</p>
-          <p class="text-2xl font-bold sm:text-3xl">{@our_score} - {@opp_score}</p>
-          <p class="text-xs text-blue-100">
-            {String.capitalize(Atom.to_string(@phase.half))} {@phase.inning} • {if @phase.mode ==
-                                                                                     :offense,
-                                                                                   do:
-                                                                                     "Our At-Bat",
-                                                                                   else:
-                                                                                     if(
-                                                                                       @phase.mode ==
-                                                                                         :defense,
-                                                                                       do:
-                                                                                         "Opponent At-Bat",
-                                                                                       else:
-                                                                                         "Game Final"
-                                                                                     )}
-          </p>
-          <p class="text-xs text-blue-100">
-            HR Home {@game.home_home_runs} • Away {@game.away_home_runs}
-          </p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button
+            id="skip-batter-button"
+            phx-click="skip_batter"
+            disabled={GameState.mode(@game_state) == :defense}
+            class="soft-pill inline-flex items-center justify-center gap-1 px-2 py-1 text-xs"
+          >
+            <.icon name="hero-forward" class="size-3.5" /> Skip
+          </button>
+          <button
+            id="undo-last-button"
+            phx-click="undo_last"
+            class="soft-pill inline-flex items-center justify-center gap-1 px-2 py-1 text-xs"
+          >
+            <.icon name="hero-arrow-uturn-left" class="size-3.5" /> Undo
+          </button>
+          <.link
+            navigate={~p"/games/#{@game.id}"}
+            class="soft-pill inline-flex items-center justify-center gap-1 px-2 py-1 text-xs"
+          >
+            <.icon name="hero-clipboard-document-list" class="size-3.5" /> Summary
+          </.link>
         </div>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
-        <button
-          id="skip-batter-button"
-          phx-click="skip_batter"
-          disabled={@phase.mode != :offense or @no_lineup?}
-          class="soft-pill"
-        >
-          <.icon name="hero-forward" class="size-4" /> Skip
-        </button>
-        <button
-          id="insert-batter-button"
-          phx-click="open_insert_picker"
-          disabled={@phase.mode != :offense or @no_lineup?}
-          class="soft-pill"
-        >
-          <.icon name="hero-user-plus" class="size-4" /> Insert Batter
-        </button>
-        <button id="undo-last-button" phx-click="undo_last" class="soft-pill">
-          <.icon name="hero-arrow-uturn-left" class="size-4" /> Undo
-        </button>
-        <button
-          id="reset-game-state-button"
-          phx-click="reset_game_state"
-          phx-confirm="Reset all tracked scoring, opponent runs/outs, and plate appearances for this game?"
-          class="soft-pill"
-        >
-          <.icon name="hero-arrow-path" class="size-4" /> Reset Game
-        </button>
-        <.link navigate={~p"/games/#{@game.id}"} class="soft-pill">
-          <.icon name="hero-clipboard-document-list" class="size-4" /> Summary
-        </.link>
-      </div>
-    </section>
-
-    <section
-      :if={@no_lineup?}
-      id="scoring-empty-lineup"
-      class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm sm:p-6"
-    >
-      <h2 class="text-lg font-semibold text-amber-950">Build a lineup before scoring</h2>
-      <p class="mt-1 text-sm text-amber-800">
-        Add at least one active player to the batting order to record plate appearances.
-      </p>
-      <.link navigate={~p"/games/#{@game.id}/setup"} class="btn btn-primary mt-4">
-        Open Lineup Setup
-      </.link>
-    </section>
-
-    <section :if={!@no_lineup?} class="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-      <div :if={@phase.mode == :offense} class="space-y-4">
-        <article
-          :if={@phase.mode == :offense}
-          class="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Now Batting</p>
-              <h2 class="mt-1 text-2xl font-semibold text-slate-900">
-                #{@effective_batter.jersey_number} {@effective_batter.name}
-              </h2>
-              <p class="mt-1 text-sm text-slate-500">
-                Spot {@batting_index + 1} of {length(@lineup)}
-                <span
-                  :if={@inserted_player}
-                  class="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+        <div class="w-full min-w-0 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table class="w-full min-w-[22rem] table-fixed text-center text-[11px] sm:min-w-[40rem] sm:text-sm">
+            <colgroup>
+              <col class="w-14 sm:w-28" />
+              <col :for={_inning <- @game_state.innings} class="w-4 sm:w-auto" />
+              <col class="w-5 sm:w-10" />
+              <col class="w-5 sm:w-10" />
+            </colgroup>
+            <thead class="bg-slate-100 text-[9px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.14em]">
+              <th class="px-0.5 py-1 sm:px-2 sm:py-1.5">Team</th>
+              <th :for={inning <- @game_state.innings} class="px-0 py-1 sm:px-3 sm:py-2">
+                {inning.number}
+              </th>
+              <th class="px-0.5 py-1 sm:px-2 sm:py-1.5">R</th>
+              <th class="px-0.5 py-1 sm:px-2 sm:py-1.5">HR</th>
+            </thead>
+            <tbody>
+              <tr id="line-score-away" class="border-t border-slate-200 bg-white">
+                <td class="px-0.5 py-1 text-left font-medium text-slate-700 sm:px-2 sm:py-1.5">
+                  <span class="block truncate whitespace-nowrap">
+                    {if @game_state.alignment == :away,
+                      do: "Slamingoes",
+                      else: @game.opponent_name}
+                  </span>
+                </td>
+                <td
+                  :for={inning <- @game_state.innings}
+                  class="px-0 py-1 font-semibold text-slate-900 sm:px-3 sm:py-2"
                 >
-                  Inserted Batter
-                </span>
+                  {if inning.number <= @game_state.inning, do: inning.score.away, else: "-"}
+                </td>
+                <td class="px-0.5 py-1 font-bold text-slate-900 sm:px-2 sm:py-1.5">
+                  {GameState.game_score(@game_state).away}
+                </td>
+                <td class="px-0.5 py-1 text-slate-900 sm:px-2 sm:py-1.5">
+                  {@game_state.home_runs.away}
+                </td>
+              </tr>
+
+              <tr id="line-score-home" class="border-t border-slate-200 bg-slate-50">
+                <td class="px-0.5 py-1 text-left font-medium text-slate-700 sm:px-2 sm:py-1.5">
+                  <span class="block truncate whitespace-nowrap">
+                    {if @game_state.alignment == :home,
+                      do: "Slamingoes",
+                      else: @game.opponent_name}
+                  </span>
+                </td>
+                <td
+                  :for={inning <- @game_state.innings}
+                  class="px-0 py-1 font-semibold text-slate-900 sm:px-3 sm:py-2"
+                >
+                  {if (inning.number == @game_state.inning and @game_state.half == :top) or
+                        inning.number > @game_state.inning, do: "-", else: inning.score.home}
+                </td>
+                <td class="px-0.5 py-1 font-bold text-slate-900 sm:px-2 sm:py-1.5">
+                  {GameState.game_score(@game_state).home}
+                </td>
+                <td class="px-0.5 py-1 text-slate-900 sm:px-2 sm:py-1.5">
+                  {@game_state.home_runs.home}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-3">
+      <div
+        :if={
+          (@game_state.alignment == :away and @game_state.half == :top) or
+            (@game_state.alignment == :home and @game_state.half == :bottom)
+        }
+        class="space-y-3"
+      >
+        <article
+          :if={
+            (@game_state.alignment == :away and @game_state.half == :top) or
+              (@game_state.alignment == :home and @game_state.half == :bottom)
+          }
+          class="rounded-3xl border border-blue-100 bg-white p-3.5 shadow-sm sm:p-4"
+        >
+          <div class="grid grid-cols-3 gap-1.5 sm:gap-3">
+            <div class="rounded-xl bg-slate-50 px-3 py-2">
+              <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                First
+              </p>
+              <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {Player.display_name(@game_state.bases.first)}
               </p>
             </div>
-            <div class="rounded-2xl bg-slate-100 px-3 py-2 text-right">
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Result / Count</p>
-              <p class="text-lg font-semibold text-slate-900">{result_label(@selected_result)}</p>
-              <p class="text-sm font-semibold text-slate-600">{@balls}-{@strikes}</p>
-              <p class="text-xs text-slate-500">
-                Projected R {@preview_runs} • RBI {@preview_rbis}
+            <div class="rounded-xl bg-slate-50 px-3 py-2">
+              <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                Second
+              </p>
+              <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {Player.display_name(@game_state.bases.second)}
+              </p>
+            </div>
+            <div class="rounded-xl bg-slate-50 px-3 py-2">
+              <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                Third
+              </p>
+              <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {Player.display_name(@game_state.bases.third)}
               </p>
             </div>
           </div>
         </article>
 
         <article
-          :if={@phase.mode == :offense}
-          class="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6"
+          :if={GameState.mode(@game_state) == :offense}
+          class="rounded-3xl border border-blue-100 bg-white p-3.5 shadow-sm sm:p-4"
         >
-          <h3 class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Plate Appearance
-          </h3>
-          <p class="mt-2 text-xs text-slate-500">
-            <%= if @phase.mode == :offense do %>
-              Active: {String.capitalize(Atom.to_string(@phase.half))} {@phase.inning} • Outs {@phase.our_outs}/3 • Runs this half {@phase.our_runs}/5
-            <% else %>
-              Waiting for opponent half to finish.
-            <% end %>
-          </p>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="rounded-xl bg-slate-50 px-3 py-1.5">
+              <p class="text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                Inning
+              </p>
+              <p class="mt-0.5 text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {String.capitalize(Atom.to_string(@game_state.half))} {@game_state.inning}
+              </p>
+            </div>
+            <div class="rounded-xl bg-slate-50 px-3 py-1.5">
+              <p class="text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                Outs
+              </p>
+              <p class="mt-0.5 text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {@game_state.outs}/3
+              </p>
+            </div>
+            <div class="rounded-xl bg-slate-50 px-3 py-1.5">
+              <p class="text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                Count
+              </p>
+              <p class="mt-0.5 text-center text-sm font-semibold text-slate-900 sm:text-base">
+                {@game_state.count.balls}-{@game_state.count.strikes}
+              </p>
+            </div>
+          </div>
 
-          <div class="mt-3 grid grid-cols-3 gap-2">
+          <div class="mt-2.5 grid grid-cols-2 gap-1.5">
             <button
               id="pitch-ball-button"
               phx-click="record_ball"
-              disabled={@phase.mode != :offense}
+              disabled={
+                (@game_state.alignment == :away and @game_state.half == :bottom) or
+                  (@game_state.alignment == :home and @game_state.half == :top)
+              }
               class="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-900 transition hover:bg-blue-100"
             >
               Ball
@@ -143,154 +194,102 @@
             <button
               id="pitch-strike-button"
               phx-click="record_strike"
-              disabled={@phase.mode != :offense}
+              disabled={
+                (@game_state.alignment == :away and @game_state.half == :bottom) or
+                  (@game_state.alignment == :home and @game_state.half == :top)
+              }
               class="min-h-11 rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-900 transition hover:bg-rose-100"
             >
               Strike (Foul)
             </button>
-            <button
-              id="pitch-reset-button"
-              phx-click="reset_count"
-              disabled={@phase.mode != :offense}
-              class="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Reset Count
-            </button>
           </div>
 
-          <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <button
-              :for={result <- @results}
-              phx-click="select_result"
-              phx-value-result={result.value}
-              disabled={@phase.mode != :offense}
-              class={[
-                "result-pill min-h-14 rounded-2xl text-base font-semibold text-white transition",
-                result.color,
-                @selected_result == result.value && "ring-4 ring-blue-200"
-              ]}
-            >
-              {result.label}
-            </button>
+          <div class="mt-2.5 space-y-1.5">
+            <div class="grid grid-cols-3 gap-1.5">
+              <button
+                :for={result <- Enum.filter(@results, &(&1.value in [:single, :double, :triple]))}
+                phx-click="select_result"
+                phx-value-result={result.value}
+                disabled={GameState.mode(@game_state) == :defense}
+                class={[
+                  "result-pill min-h-12 rounded-2xl text-sm font-semibold text-white transition sm:min-h-14 sm:text-base",
+                  result.color
+                ]}
+              >
+                {result.label}
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button
+                :for={result <- Enum.filter(@results, &(&1.value in [:out, :home_run]))}
+                phx-click="select_result"
+                phx-value-result={result.value}
+                disabled={GameState.mode(@game_state) == :defense}
+                class={[
+                  "result-pill min-h-12 rounded-2xl text-sm font-semibold text-white transition sm:min-h-14 sm:text-base",
+                  result.color
+                ]}
+              >
+                {result.label}
+              </button>
+            </div>
           </div>
         </article>
 
-        <article
-          :if={@phase.mode == :offense}
-          class="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6"
+        <details
+          :if={GameState.mode(@game_state) == :offense and not GameState.game_over?(@game_state)}
+          class="group rounded-3xl border border-blue-100 bg-white p-3.5 shadow-sm sm:p-4"
         >
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Recent Events
-            </h3>
-            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-              {length(@feed)} tracked
-            </span>
-          </div>
-          <div class="mt-3 space-y-2">
-            <div
-              :for={event <- @feed}
-              class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2"
-            >
-              <%= if event.type == :skip do %>
-                <p class="text-sm font-semibold text-slate-700">{event.player_name} skipped</p>
-                <p class="text-xs text-slate-500">Inning {event.inning}</p>
-              <% else %>
-                <div class="flex items-center justify-between gap-3">
-                  <p class="text-sm font-semibold text-slate-900">{event.player_name}</p>
-                  <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    {result_label(event.result)}
+          <summary class="list-none cursor-pointer">
+            <div class="flex items-center justify-between gap-2">
+              <div class="grid flex-1 grid-cols-3 gap-1.5 sm:gap-3">
+                <div class="rounded-xl bg-slate-50 px-3 py-2">
+                  <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                    Batter
+                  </p>
+                  <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                    {@game_state |> GameState.current_batter() |> Player.display_name()}
                   </p>
                 </div>
-                <p class="text-xs text-slate-500">
-                  Inning {event.inning} • Count {event.balls}-{event.strikes} • RBI {event.rbis}
-                  <span :if={event.scorer_names != []}>
-                    • Scored {Enum.join(event.scorer_names, ", ")}
-                  </span>
-                  <span :if={event.inserted_batter}>• Inserted</span>
-                </p>
-              <% end %>
-            </div>
-          </div>
-        </article>
-      </div>
-
-      <div :if={@phase.mode == :offense} class="space-y-4">
-        <article
-          :if={@phase.mode == :offense}
-          class="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6"
-        >
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Bases</h3>
-            <button
-              phx-click="reset_bases"
-              class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              Reset Bases
-            </button>
-          </div>
-
-          <div class="mt-3 space-y-2">
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">First</p>
-                <button
-                  phx-click="clear_base"
-                  phx-value-base="first"
-                  class="text-xs font-semibold text-rose-700 hover:text-rose-900"
-                >
-                  Clear
-                </button>
+                <div class="rounded-xl bg-slate-50 px-3 py-2">
+                  <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                    On Deck
+                  </p>
+                  <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                    {Enum.at(
+                      @game_state.lineup,
+                      rem(@game_state.current_batter_index + 1, length(@game_state.lineup))
+                    )
+                    |> Player.display_name()}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-slate-50 px-3 py-2">
+                  <p class="whitespace-nowrap text-[10px] uppercase tracking-[0.08em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+                    In The Hole
+                  </p>
+                  <p class="mt-0.5 truncate text-center text-sm font-semibold text-slate-900 sm:text-base">
+                    {Enum.at(
+                      @game_state.lineup,
+                      rem(@game_state.current_batter_index + 2, length(@game_state.lineup))
+                    )
+                    |> Player.display_name()}
+                  </p>
+                </div>
               </div>
-              <p class="text-sm font-semibold text-slate-900">
-                {base_runner_name(assigns, @bases.first)}
-              </p>
+              <.icon
+                name="hero-chevron-down"
+                class="size-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+              />
             </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Second</p>
-                <button
-                  phx-click="clear_base"
-                  phx-value-base="second"
-                  class="text-xs font-semibold text-rose-700 hover:text-rose-900"
-                >
-                  Clear
-                </button>
-              </div>
-              <p class="text-sm font-semibold text-slate-900">
-                {base_runner_name(assigns, @bases.second)}
-              </p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Third</p>
-                <button
-                  phx-click="clear_base"
-                  phx-value-base="third"
-                  class="text-xs font-semibold text-rose-700 hover:text-rose-900"
-                >
-                  Clear
-                </button>
-              </div>
-              <p class="text-sm font-semibold text-slate-900">
-                {base_runner_name(assigns, @bases.third)}
-              </p>
-            </div>
-          </div>
-        </article>
+          </summary>
 
-        <article
-          :if={@phase.mode == :offense}
-          class="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6"
-        >
-          <h3 class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Lineup</h3>
-          <ol class="mt-3 space-y-2">
+          <ol class="mt-2.5 space-y-1.5">
             <li
-              :for={{player, index} <- Enum.with_index(@lineup)}
+              :for={{player, index} <- Enum.with_index(@game_state.lineup)}
               class={[
-                "flex items-center justify-between rounded-xl px-3 py-2",
-                @batting_index == index && is_nil(@inserted_player) && "bg-blue-100 text-blue-950",
-                @batting_index != index && "bg-slate-50 text-slate-700"
+                "flex items-center justify-between rounded-xl px-3 py-1.5",
+                @game_state.current_batter_index == index && "bg-blue-100 text-blue-950",
+                @game_state.current_batter_index != index && "bg-slate-50 text-slate-700"
               ]}
             >
               <div class="flex items-center gap-2">
@@ -300,17 +299,17 @@
                 <span class="font-semibold">#{player.jersey_number} {player.name}</span>
               </div>
               <.icon
-                :if={@batting_index == index && is_nil(@inserted_player)}
+                :if={@game_state.current_batter_index == index}
                 name="hero-arrow-right-circle"
                 class="size-4"
               />
             </li>
           </ol>
-        </article>
+        </details>
       </div>
 
       <article
-        :if={@phase.mode == :defense}
+        :if={GameState.mode(@game_state) == :defense and not GameState.game_over?(@game_state)}
         class="col-span-full rounded-3xl border border-blue-100 bg-white p-5 shadow-sm sm:p-7"
       >
         <div class="flex items-center justify-between gap-3">
@@ -318,7 +317,7 @@
             Opponent Runs
           </h3>
           <p class="text-sm font-semibold text-slate-700">
-            {String.capitalize(Atom.to_string(@phase.half))} {@phase.inning}
+            {String.capitalize(Atom.to_string(@game_state.half))} {@game_state.inning}
           </p>
         </div>
 
@@ -326,30 +325,32 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runs</p>
-              <p class="mt-1 text-3xl font-bold text-slate-900">{@phase.opp_runs}</p>
+              <p class="mt-1 text-3xl font-bold text-slate-900">
+                {GameState.opponent_score(@game_state)}
+              </p>
             </div>
             <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Outs</p>
-              <p class="mt-1 text-3xl font-bold text-slate-900">{@phase.opp_outs}</p>
+              <p class="mt-1 text-3xl font-bold text-slate-900">{@game_state.outs}</p>
             </div>
           </div>
 
           <div class="mt-4 grid grid-cols-2 gap-3">
             <button
-              phx-click="inc_opp_runs"
+              phx-click="increment_runs"
               class="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-600 px-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]"
             >
               + Run
             </button>
             <button
-              phx-click="inc_opp_outs"
+              phx-click="increment_outs"
               class="inline-flex min-h-16 items-center justify-center rounded-2xl bg-rose-600 px-4 text-lg font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[0.99]"
             >
               + Out
             </button>
           </div>
           <button
-            phx-click="inc_opp_home_run"
+            phx-click="increment_home_runs"
             class="mt-3 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-amber-500 px-4 text-lg font-bold text-white shadow-sm transition hover:bg-amber-600 active:scale-[0.99]"
           >
             + Home Run
@@ -365,7 +366,7 @@
 
   <div
     :if={@result_modal_open}
-    class="fixed inset-0 z-40 flex items-end bg-slate-900/60 p-3 sm:items-center sm:justify-center"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-3"
     phx-click="close_result_modal"
   >
     <div
@@ -398,7 +399,7 @@
         <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
           <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Batter</p>
           <p class="mt-1 text-sm font-semibold text-slate-900">
-            #{@effective_batter.jersey_number} {@effective_batter.name}
+            #{@game_state |> GameState.current_batter() |> Player.display_name()}
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <button
@@ -414,12 +415,12 @@
         </div>
 
         <div
-          :if={!is_nil(@bases.first)}
+          :if={!is_nil(@game_state.bases.first)}
           class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
         >
           <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Runner on First</p>
           <p class="mt-1 text-sm font-semibold text-slate-900">
-            {base_runner_name(assigns, @bases.first)}
+            {Player.display_name(@game_state.bases.first)}
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <button
@@ -435,12 +436,12 @@
         </div>
 
         <div
-          :if={!is_nil(@bases.second)}
+          :if={!is_nil(@game_state.bases.second)}
           class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
         >
           <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Runner on Second</p>
           <p class="mt-1 text-sm font-semibold text-slate-900">
-            {base_runner_name(assigns, @bases.second)}
+            {Player.display_name(@game_state.bases.second)}
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <button
@@ -456,12 +457,12 @@
         </div>
 
         <div
-          :if={!is_nil(@bases.third)}
+          :if={!is_nil(@game_state.bases.third)}
           class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
         >
           <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Runner on Third</p>
           <p class="mt-1 text-sm font-semibold text-slate-900">
-            {base_runner_name(assigns, @bases.third)}
+            {Player.display_name(@game_state.bases.third)}
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <button
@@ -479,13 +480,12 @@
 
       <div class="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
         <p>
-          Projected: R {@modal_preview_runs} • RBI {@modal_preview_rbis}
+          Projected: R {@modal_preview_runs} • O {@modal_preview_outs}
         </p>
         <p class="mt-1">
-          End Bases: 1B {base_runner_name(assigns, @modal_preview_bases.first)} • 2B {base_runner_name(
-            assigns,
+          End Bases: 1B {Player.display_name(@modal_preview_bases.first)} • 2B {Player.display_name(
             @modal_preview_bases.second
-          )} • 3B {base_runner_name(assigns, @modal_preview_bases.third)}
+          )} • 3B {Player.display_name(@modal_preview_bases.third)}
         </p>
         <p :if={@modal_preview_conflict?} class="mt-1 text-amber-700">
           Conflict detected: two runners cannot finish on the same base.
@@ -504,42 +504,6 @@
           class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           Confirm Result
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div
-    :if={@insert_picker_open}
-    class="fixed inset-0 z-30 flex items-end bg-slate-900/50 p-3 sm:items-center sm:justify-center"
-    phx-click="close_insert_picker"
-  >
-    <div
-      class="w-full max-w-md rounded-3xl bg-white p-4 shadow-xl sm:p-6"
-      phx-click-away="close_insert_picker"
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Insert Batter</p>
-          <h3 class="text-lg font-semibold text-slate-900">Choose a player for this turn</h3>
-        </div>
-        <button
-          phx-click="close_insert_picker"
-          class="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-      </div>
-
-      <div class="mt-4 space-y-2">
-        <button
-          :for={player <- @bench_players}
-          phx-click="pick_insert_batter"
-          phx-value-player_id={player.id}
-          class="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-left transition hover:border-blue-300 hover:bg-blue-50"
-        >
-          <span class="font-semibold text-slate-900">#{player.jersey_number} {player.name}</span>
-          <.icon name="hero-arrow-right" class="size-4 text-slate-500" />
         </button>
       </div>
     </div>

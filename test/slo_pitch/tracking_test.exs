@@ -2,8 +2,32 @@ defmodule SloPitch.TrackingTest do
   use SloPitch.DataCase, async: true
 
   alias SloPitch.Tracking
+  alias SloPitch.Tracking.Player
 
   describe "players" do
+    test "create_player/1 creates a player" do
+      assert {:ok, %Player{} = player} =
+               Tracking.create_player(%{name: "Travis", active: true})
+
+      assert player.name == "Travis"
+      assert player.active == true
+    end
+
+    test "list_players/0 orders active first, then by name" do
+      {:ok, _} = Tracking.create_player(%{name: "Player B", active: false})
+      {:ok, _} = Tracking.create_player(%{name: "Player A", active: true})
+
+      [first | _] = Tracking.list_players()
+      assert first.name == "Player A"
+    end
+
+    test "toggle_player_active/1 flips active flag" do
+      {:ok, player} = Tracking.create_player(%{name: "Test", active: true})
+
+      {:ok, updated} = Tracking.toggle_player_active(player)
+      assert updated.active == false
+    end
+
     test "lists active players first by name and toggles active state" do
       unique = System.unique_integer([:positive])
       inactive = player_fixture(%{name: "Casey #{unique}", active: false})
@@ -46,15 +70,13 @@ defmodule SloPitch.TrackingTest do
                  opponent_name: "",
                  played_on: nil,
                  status: "paused",
-                 home_or_away: "middle",
-                 our_score: -1
+                 alignment: "middle"
                })
 
       assert "can't be blank" in errors_on(changeset).opponent_name
       assert "can't be blank" in errors_on(changeset).played_on
       assert "is invalid" in errors_on(changeset).status
-      assert "is invalid" in errors_on(changeset).home_or_away
-      assert "must be greater than or equal to 0" in errors_on(changeset).our_score
+      assert "is invalid" in errors_on(changeset).alignment
     end
 
     test "lists games newest first and limits recent games" do
@@ -64,6 +86,29 @@ defmodule SloPitch.TrackingTest do
 
       assert Tracking.list_games() |> Enum.map(& &1.id) == [newest.id, newer.id, older.id]
       assert Tracking.list_recent_games(2) |> Enum.map(& &1.id) == [newest.id, newer.id]
+    end
+
+    test "create_game/1 creates a game" do
+      {:ok, game} =
+        Tracking.create_game(%{
+          opponent_name: "opponent",
+          alignment: :home,
+          played_on: Date.utc_today()
+        })
+
+      assert game.id
+    end
+
+    test "list_recent_games/1 limits results" do
+      for i <- 1..10 do
+        Tracking.create_game(%{
+          opponent_name: "opponent",
+          alignment: :home,
+          played_on: Date.add(Date.utc_today(), -i)
+        })
+      end
+
+      assert length(Tracking.list_recent_games(5)) == 5
     end
   end
 
@@ -79,11 +124,6 @@ defmodule SloPitch.TrackingTest do
       assert {:ok, slots} = Tracking.set_game_lineup(game.id, [player_b.id, player_a.id])
       assert Enum.map(slots, & &1.player_id) == [player_b.id, player_a.id]
 
-      assert Enum.map(Tracking.list_lineup_players(game.id), & &1.id) == [
-               player_b.id,
-               player_a.id
-             ]
-
       bench_ids = Tracking.list_bench_players(game.id) |> Enum.map(& &1.id)
       assert bench.id in bench_ids
       refute inactive.id in bench_ids
@@ -91,162 +131,21 @@ defmodule SloPitch.TrackingTest do
   end
 
   describe "plate appearances and scoring" do
-    test "validates count consistency for walks and strikeouts" do
-      game = game_fixture()
-      player = player_fixture()
-
-      assert {:error, walk_changeset} =
-               Tracking.record_plate_appearance(%{
-                 game_id: game.id,
-                 player_id: player.id,
-                 inning: 1,
-                 result: "walk",
-                 balls: 3
-               })
-
-      assert "must be 4 for a walk" in errors_on(walk_changeset).balls
-
-      assert {:error, strikeout_changeset} =
-               Tracking.record_plate_appearance(%{
-                 game_id: game.id,
-                 player_id: player.id,
-                 inning: 1,
-                 result: "strikeout",
-                 strikes: 2
-               })
-
-      assert "must be 3 for a strikeout" in errors_on(strikeout_changeset).strikes
-    end
-
-    test "ensures innings once and upserts opponent runs and outs" do
-      game = game_fixture()
-
-      assert Tracking.ensure_innings(game.id) |> length() == 7
-      assert Tracking.ensure_innings(game.id) |> length() == 7
-
-      assert {:ok, inning} = Tracking.upsert_inning_runs(game.id, 1, %{opp_runs: 2, opp_outs: 1})
-      assert inning.opp_runs == 2
-      assert inning.opp_outs == 1
-
-      assert {:ok, inning} = Tracking.upsert_inning_runs(game.id, 1, %{opp_runs: 4, opp_outs: 3})
-      assert inning.opp_runs == 4
-      assert inning.opp_outs == 3
-    end
-
-    test "records sequence numbers and refreshes the game score" do
-      game = game_fixture()
-      player = player_fixture()
-
-      assert {:ok, first} =
-               Tracking.record_plate_appearance(%{
-                 game_id: game.id,
-                 player_id: player.id,
-                 inning: 1,
-                 result: "single",
-                 runs_scored: 1,
-                 rbis: 1
-               })
-
-      assert {:ok, second} =
-               Tracking.record_plate_appearance(%{
-                 game_id: game.id,
-                 player_id: player.id,
-                 inning: 1,
-                 result: "out",
-                 runs_scored: 0,
-                 rbis: 0
-               })
-
-      assert first.sequence_number == 1
-      assert second.sequence_number == 2
-      assert Tracking.get_game!(game.id).our_score == 1
-    end
-
-    test "resets plate appearances, inning state, score, and home run counts" do
-      game = game_fixture(%{away_home_runs: 2})
-      player = player_fixture()
-      {:ok, _inning} = Tracking.upsert_inning_runs(game.id, 1, %{opp_runs: 3, opp_outs: 2})
-
-      {:ok, _pa} =
-        Tracking.record_plate_appearance(%{
-          game_id: game.id,
-          player_id: player.id,
-          inning: 1,
-          result: "home_run",
-          runs_scored: 1,
-          rbis: 1
+    test "set_game_lineup/2 replaces lineup" do
+      {:ok, game} =
+        Tracking.create_game(%{
+          opponent_name: "opponent",
+          alignment: :home,
+          played_on: Date.utc_today()
         })
 
-      assert {:ok, game} = Tracking.reset_game_state(game.id)
-      assert game.our_score == 0
-      assert game.opp_score == 0
-      assert game.home_home_runs == 0
-      assert game.away_home_runs == 0
-      assert Tracking.list_plate_appearances(game.id) == []
+      {:ok, p1} = Tracking.create_player(%{name: "Player A", active: true})
+      {:ok, p2} = Tracking.create_player(%{name: "Player B", active: true})
 
-      inning = Tracking.list_innings(game.id) |> List.first()
-      assert inning.opp_runs == 0
-      assert inning.opp_outs == 0
-    end
+      {:ok, lineup} = Tracking.set_game_lineup(game.id, [p1.id, p2.id])
 
-    test "calculates player runs from explicit end bases and ignores skips" do
-      game = game_fixture()
-      unique = System.unique_integer([:positive])
-      batter = player_fixture(%{name: "Batter #{unique}"})
-      runner = player_fixture(%{name: "Runner #{unique}"})
-
-      plate_appearance_fixture(%{
-        game: game,
-        player: runner,
-        result: "single",
-        end_bases: %{first: runner.id, second: nil, third: nil}
-      })
-
-      plate_appearance_fixture(%{
-        game: game,
-        player: batter,
-        result: "double",
-        runs_scored: 1,
-        rbis: 1,
-        end_bases: %{first: nil, second: batter.id, third: nil}
-      })
-
-      plate_appearance_fixture(%{game: game, player: runner, result: "out", skip: true})
-
-      stats = Tracking.player_stats(:season)
-      runner_stats = Enum.find(stats, &(&1.player_name == runner.name))
-      batter_stats = Enum.find(stats, &(&1.player_name == batter.name))
-
-      assert runner_stats.r == 1
-      assert batter_stats.rbi == 1
-      assert runner_stats.pa == 2
-    end
-
-    test "last five stats window excludes older games" do
-      player = player_fixture()
-
-      old_game = game_fixture(%{played_on: ~D[2026-04-01]})
-      recent_games = Enum.map(2..6, &game_fixture(%{played_on: Date.add(~D[2026-04-01], &1)}))
-
-      plate_appearance_fixture(%{
-        game: old_game,
-        player: player,
-        result: "home_run",
-        runs_scored: 1,
-        rbis: 1
-      })
-
-      Enum.each(recent_games, fn game ->
-        plate_appearance_fixture(%{game: game, player: player, result: "single"})
-      end)
-
-      season_stats = Tracking.player_stats(:season) |> Enum.find(&(&1.player_name == player.name))
-      last5_stats = Tracking.player_stats(:last5) |> Enum.find(&(&1.player_name == player.name))
-
-      assert season_stats.pa == 6
-      assert season_stats.home_run == 1
-      assert last5_stats.pa == 5
-      assert last5_stats.home_run == 0
+      assert length(lineup) == 2
+      assert Enum.map(lineup, & &1.player_id) == [p1.id, p2.id]
     end
   end
 end
