@@ -12,7 +12,7 @@ defmodule SloPitchWeb.GamesLive.Setup do
      |> assign(:page_title, "Lineup Setup")
      |> assign(:current_scope, nil)
      |> assign(:game, Tracking.get_game!(game_id))
-     |> assign(:lineup, Tracking.list_lineup_players(game_id))
+     |> assign(:lineup, Tracking.get_game!(game_id).players)
      |> assign(:bench_players, Tracking.list_bench_players(game_id))}
   end
 
@@ -22,7 +22,7 @@ defmodule SloPitchWeb.GamesLive.Setup do
     lineup = move(socket.assigns.lineup, index, index - 1)
 
     {:ok, _slots} = Tracking.set_game_lineup(socket.assigns.game.id, Enum.map(lineup, & &1.id))
-    {:noreply, assign(socket, :lineup, Tracking.list_lineup_players(socket.assigns.game.id))}
+    {:noreply, assign(socket, :lineup, Tracking.get_game!(socket.assigns.game.id).players)}
   end
 
   def handle_event("move_down", %{"index" => index}, socket) do
@@ -30,7 +30,7 @@ defmodule SloPitchWeb.GamesLive.Setup do
     lineup = move(socket.assigns.lineup, index, index + 1)
 
     {:ok, _slots} = Tracking.set_game_lineup(socket.assigns.game.id, Enum.map(lineup, & &1.id))
-    {:noreply, assign(socket, :lineup, Tracking.list_lineup_players(socket.assigns.game.id))}
+    {:noreply, assign(socket, :lineup, Tracking.get_game!(socket.assigns.game.id).players)}
   end
 
   def handle_event("remove_player", %{"id" => id}, socket) do
@@ -40,7 +40,7 @@ defmodule SloPitchWeb.GamesLive.Setup do
 
     {:noreply,
      socket
-     |> assign(:lineup, Tracking.list_lineup_players(socket.assigns.game.id))
+     |> assign(:lineup, Tracking.get_game!(socket.assigns.game.id).players)
      |> assign(:bench_players, Tracking.list_bench_players(socket.assigns.game.id))}
   end
 
@@ -52,7 +52,7 @@ defmodule SloPitchWeb.GamesLive.Setup do
 
     {:noreply,
      socket
-     |> assign(:lineup, Tracking.list_lineup_players(socket.assigns.game.id))
+     |> assign(:lineup, Tracking.get_game!(socket.assigns.game.id).players)
      |> assign(:bench_players, Tracking.list_bench_players(socket.assigns.game.id))}
   end
 
@@ -78,7 +78,9 @@ defmodule SloPitchWeb.GamesLive.Setup do
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Lineup Setup</p>
-              <h1 class="mt-1 text-2xl font-semibold text-slate-900">vs {@game.opponent_name}</h1>
+              <h1 class="mt-1 text-2xl font-semibold text-slate-900">
+                {if @game.alignment == :away, do: "@", else: "vs."} {@game.opponent_name}
+              </h1>
               <p class="text-sm text-slate-600">
                 {Calendar.strftime(@game.played_on, "%A, %b %d")} • {@game.location}
               </p>

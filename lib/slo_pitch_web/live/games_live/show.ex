@@ -2,20 +2,44 @@ defmodule SloPitchWeb.GamesLive.Show do
   use SloPitchWeb, :live_view
 
   alias SloPitch.Tracking
+  alias SloPitch.Tracking.Games
+  alias SloPitch.Tracking.GameState
+  alias SloPitch.Tracking.GameState.PlayerStatistics
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game_id = String.to_integer(id)
     game = Tracking.get_game!(game_id)
+    game_state = Games.rebuild_game_state(game)
 
     {:ok,
      socket
      |> assign(:page_title, "Game Summary")
      |> assign(:current_scope, nil)
      |> assign(:game, game)
-     |> assign(:innings, Tracking.list_innings(game_id))
-     |> assign(:our_runs_by_inning, our_runs_by_inning(game_id))
-     |> assign(:batting_lines, game_batting_lines(game_id))}
+     |> assign(:game_state, game_state)
+     |> assign(:innings, [])
+     |> assign(:our_runs_by_inning, [])
+     |> assign(:statistics, prepare_statistics(game_state))}
+  end
+
+  defp prepare_statistics(%GameState{statistics: statistics, lineup: lineup}) do
+    lineup
+    |> Enum.reduce([], fn player, acc ->
+      stats =
+        statistics
+        |> Map.get(player.id)
+        |> PlayerStatistics.normalize()
+
+      [%{player: player, stats: stats} | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp format_percentage(value) do
+    value
+    |> :erlang.float_to_binary([{:decimals, 3}])
+    |> String.replace(~r/^0(?=\.)/, "")
   end
 
   @impl true
@@ -29,14 +53,16 @@ defmodule SloPitchWeb.GamesLive.Show do
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-blue-100">Game Summary</p>
-              <h1 class="mt-1 text-2xl font-semibold sm:text-3xl">vs {@game.opponent_name}</h1>
+              <h1 class="mt-1 text-2xl font-semibold sm:text-3xl">
+                {if @game.alignment == :away, do: "@", else: "vs."} {@game.opponent_name}
+              </h1>
               <p class="text-sm text-blue-100">
                 {Calendar.strftime(@game.played_on, "%A, %b %d")} • {@game.location}
               </p>
             </div>
             <div class="rounded-2xl bg-white/15 px-4 py-3 text-right backdrop-blur">
               <p class="text-xs uppercase tracking-[0.2em] text-blue-100">Final</p>
-              <p class="text-3xl font-bold">{@game.our_score} - {@game.opp_score}</p>
+              <p class="text-3xl font-bold">Score</p>
             </div>
           </div>
 
@@ -62,24 +88,38 @@ defmodule SloPitchWeb.GamesLive.Show do
                 <thead class="bg-slate-100 text-left text-xs uppercase tracking-[0.14em] text-slate-500">
                   <tr>
                     <th class="px-3 py-2">Team</th>
-                    <th :for={inning <- @innings} class="px-3 py-2">{inning.inning_number}</th>
+                    <th :for={inning <- @game_state.innings} class="px-3 py-2">{inning.number}</th>
                     <th class="px-3 py-2">R</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr id="line-score-away" class="border-t border-slate-200 bg-white">
-                    <td class="px-3 py-2 font-medium text-slate-700">{@game.opponent_name}</td>
-                    <td :for={inning <- @innings} class="px-3 py-2 font-semibold text-slate-900">
-                      {inning.opp_runs}
+                    <td class="px-3 py-2 font-medium text-slate-700">
+                      {if @game_state.alignment == :away, do: "Slamingoes", else: @game.opponent_name}
                     </td>
-                    <td class="px-3 py-2 font-bold text-slate-900">{@game.opp_score}</td>
+                    <td
+                      :for={inning <- @game_state.innings}
+                      class="px-3 py-2 font-semibold text-slate-900"
+                    >
+                      {inning.score.away}
+                    </td>
+                    <td class="px-3 py-2 font-bold text-slate-900">
+                      {GameState.game_score(@game_state).away}
+                    </td>
                   </tr>
                   <tr id="line-score-home" class="border-t border-slate-200 bg-slate-50">
-                    <td class="px-3 py-2 font-medium text-slate-700">Slo-Pitch</td>
-                    <td :for={inning <- @innings} class="px-3 py-2 font-semibold text-blue-900">
-                      {Map.get(@our_runs_by_inning, inning.inning_number, 0)}
+                    <td class="px-3 py-2 font-medium text-slate-700">
+                      {if @game_state.alignment == :home, do: "Slamingoes", else: @game.opponent_name}
                     </td>
-                    <td class="px-3 py-2 font-bold text-blue-900">{@game.our_score}</td>
+                    <td
+                      :for={inning <- @game_state.innings}
+                      class="px-3 py-2 font-semibold text-blue-900"
+                    >
+                      {inning.score.home}
+                    </td>
+                    <td class="px-3 py-2 font-bold text-blue-900">
+                      {GameState.game_score(@game_state).home}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -97,27 +137,37 @@ defmodule SloPitchWeb.GamesLive.Show do
               <thead class="bg-slate-100 text-left text-xs uppercase tracking-[0.14em] text-slate-500">
                 <tr>
                   <th class="px-3 py-2">Player</th>
-                  <th class="px-3 py-2">PA</th>
                   <th class="px-3 py-2">AB</th>
-                  <th class="px-3 py-2">H</th>
-                  <th class="px-3 py-2">BB</th>
                   <th class="px-3 py-2">R</th>
+                  <th class="px-3 py-2">H</th>
+                  <th class="px-3 py-2">2B</th>
+                  <th class="px-3 py-2">3B</th>
+                  <th class="px-3 py-2">HR</th>
                   <th class="px-3 py-2">RBI</th>
+                  <th class="px-3 py-2">BB</th>
+                  <th class="px-3 py-2">SO</th>
+                  <th class="px-3 py-2">AVG</th>
+                  <th class="px-3 py-2">SLG</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  :for={line <- @batting_lines}
-                  id={"batting-line-#{String.replace(line.player_name, " ", "-")}"}
+                  :for={{row, idx} <- Enum.with_index(@statistics, 1)}
+                  id={"batting-line-#{row.player.id}"}
                   class="border-t border-slate-200 bg-white"
                 >
-                  <td class="px-3 py-2 font-medium text-slate-900">{line.player_name}</td>
-                  <td class="px-3 py-2 text-slate-700">{line.pa}</td>
-                  <td class="px-3 py-2 text-slate-700">{line.ab}</td>
-                  <td class="px-3 py-2 font-semibold text-slate-900">{line.h}</td>
-                  <td class="px-3 py-2 text-slate-700">{line.bb}</td>
-                  <td class="px-3 py-2 text-slate-700">{line.r}</td>
-                  <td class="px-3 py-2 font-semibold text-slate-900">{line.rbi}</td>
+                  <td class="px-3 py-2 font-medium text-slate-900">{idx}. {row.player.name}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.at_bats}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.runs}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.hits}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.doubles}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.triples}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.home_runs}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.rbis}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.walks}</td>
+                  <td class="px-3 py-2 text-slate-700">{row.stats.strikeouts}</td>
+                  <td class="px-3 py-2 text-slate-700">{format_percentage(row.stats.average)}</td>
+                  <td class="px-3 py-2 text-slate-700">{format_percentage(row.stats.slugging)}</td>
                 </tr>
               </tbody>
             </table>
@@ -128,33 +178,5 @@ defmodule SloPitchWeb.GamesLive.Show do
       <.app_nav current={:games} score_path={~p"/games/#{@game.id}/scoring"} />
     </Layouts.app>
     """
-  end
-
-  defp game_batting_lines(game_id) do
-    appearances = Tracking.list_plate_appearances(game_id)
-    run_totals = Tracking.run_totals_by_player(appearances)
-
-    appearances
-    |> Enum.group_by(& &1.player)
-    |> Enum.map(fn {player, appearances} ->
-      pa = length(appearances)
-      walks = Enum.count(appearances, &(&1.result == "walk"))
-      hits = Enum.count(appearances, &(&1.result in ["single", "double", "triple", "home_run"]))
-      ab = pa - walks
-      runs = Map.get(run_totals, player.id, 0)
-      rbi = Enum.reduce(appearances, 0, &(&1.rbis + &2))
-
-      %{player_name: player.name, pa: pa, ab: ab, h: hits, bb: walks, r: runs, rbi: rbi}
-    end)
-    |> Enum.sort_by(& &1.player_name)
-  end
-
-  defp our_runs_by_inning(game_id) do
-    Tracking.list_plate_appearances(game_id)
-    |> Enum.group_by(& &1.inning)
-    |> Map.new(fn {inning, appearances} ->
-      runs = Enum.reduce(appearances, 0, &(&1.runs_scored + &2))
-      {inning, runs}
-    end)
   end
 end
